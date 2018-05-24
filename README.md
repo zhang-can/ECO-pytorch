@@ -1,8 +1,8 @@
-# TSN-Pytorch
+# TSN-Pytorch(modified version by: zhang-can)
 
 *Now in experimental release, suggestions welcome*.
 
-**Note**: always use `git clone --recursive https://github.com/yjxiong/tsn-pytorch` to clone this project. 
+**Note**: always use `git clone --recursive https://github.com/zhang-can/tsn-modified` to clone this project. 
 Otherwise you will not be able to use the inception series CNN archs. 
 
 This is a reimplementation of temporal segment networks (TSN) in PyTorch. All settings are kept identical to the original caffe implementation.
