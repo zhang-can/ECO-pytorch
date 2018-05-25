@@ -1,4 +1,21 @@
-# TSN-Pytorch(modified version by: zhang-can)
+# TSN-Modified(version by: zhang-can)
+
+## Training
+
+[UCF101 - BNInception - RGB] command:
+
+```bash
+python main.py ucf101 RGB <ucf101_rgb_train_list> <ucf101_rgb_val_list> \
+   --arch BNInception --num_segments 3 \
+   --gd 20 --lr 0.001 --lr_steps 30 60 --epochs 80 \
+   -b 128 -j 8 --dropout 0.8 \
+   --snapshot_pref ucf101_bninception 
+```
+
+
+---
+
+# TSN-Pytorch
 
 *Now in experimental release, suggestions welcome*.
 
