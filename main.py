@@ -165,11 +165,12 @@ def train(train_loader, model, criterion, optimizer, epoch):
         # measure data loading time
         data_time.update(time.time() - end)
 
+        # target size: [batch_size]
         target = target.cuda(async=True)
         input_var = torch.autograd.Variable(input)
         target_var = torch.autograd.Variable(target)
 
-        # compute output
+        # compute output, output size: [batch_size, num_class]
         output = model(input_var)
         loss = criterion(output, target_var)
 

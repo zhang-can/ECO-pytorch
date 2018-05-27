@@ -215,9 +215,13 @@ TSN Configurations:
         if not self.before_softmax:
             base_out = self.softmax(base_out)
         if self.reshape:
+            # base_out.size(): [96, 101]
             base_out = base_out.view((-1, self.num_segments) + base_out.size()[1:])
+            # base_out.size(): [32, 3, 101], [batch_size, num_segments, num_class] respectively
 
         output = self.consensus(base_out)
+        # output.size(): [32, 1, 101]
+        # output after squeeze(1): [32, 101], forward() returns size: [batch_size, num_class]
         return output.squeeze(1)
 
     def _get_diff(self, input, keep_rgb=False):
