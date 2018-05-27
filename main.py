@@ -38,6 +38,13 @@ def main():
     scale_size = model.scale_size
     input_mean = model.input_mean
     input_std = model.input_std
+
+    # Optimizer s also support specifying per-parameter options. 
+    # To do this, pass in an iterable of dict s. 
+    # Each of them will define a separate parameter group, 
+    # and should contain a params key, containing a list of parameters belonging to it. 
+    # Other keys should match the keyword arguments accepted by the optimizers, 
+    # and will be used as optimization options for this group.
     policies = model.get_optim_policies()
     train_augmentation = model.get_augmentation()
 

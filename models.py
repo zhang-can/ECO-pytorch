@@ -40,6 +40,17 @@ TSN Configurations:
 
         feature_dim = self._prepare_tsn(num_class)
 
+        '''
+        # zc: print "NN variable name"
+        zc_params = self.base_model.state_dict()
+        for zc_k in zc_params.items():
+            print(zc_k)
+
+        # zc: print "Specified layer's weight and bias"
+        print(zc_params['conv1_7x7_s2.weight'])
+        print(zc_params['conv1_7x7_s2.bias'])
+        '''
+
         if self.modality == 'Flow':
             print("Converting the ImageNet model to a flow init model")
             self.base_model = self._construct_flow_model(self.base_model)
@@ -146,6 +157,8 @@ TSN Configurations:
         conv_cnt = 0
         bn_cnt = 0
         for m in self.modules():
+            # (conv1d or conv2d) 1st layer's params will be append to list: first_conv_weight & first_conv_bias, total num 1 respectively(1 conv2d)
+            # (conv1d or conv2d or Linear) from 2nd layers' params will be append to list: normal_weight & normal_bias, total num 69 respectively(68 Conv2d + 1 Linear)
             if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d):
                 ps = list(m.parameters())
                 conv_cnt += 1
@@ -162,7 +175,7 @@ TSN Configurations:
                 normal_weight.append(ps[0])
                 if len(ps) == 2:
                     normal_bias.append(ps[1])
-                  
+            # (BatchNorm1d or BatchNorm2d) params will be append to list: bn, total num 2 (enabled pbn, so only: 1st BN layer's weight + 1st BN layer's bias)
             elif isinstance(m, torch.nn.BatchNorm1d):
                 bn.extend(list(m.parameters()))
             elif isinstance(m, torch.nn.BatchNorm2d):
