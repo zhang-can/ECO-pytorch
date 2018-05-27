@@ -1,5 +1,12 @@
 # TSN-Modified(version by: zhang-can)
 
+## Generate dataset lists
+
+```bash
+python gen_dataset_lists something <dataset_frames_root_path>
+```
+e.g. python gen_dataset_lists.py something ~/dataset/20bn-something-something-v1/
+
 ## Training
 
 [UCF101 - BNInception - RGB] command:
@@ -11,7 +18,6 @@ python main.py ucf101 RGB <ucf101_rgb_train_list> <ucf101_rgb_val_list> \
    -b 128 -j 8 --dropout 0.8 \
    --snapshot_pref ucf101_bninception 
 ```
-
 
 ---
 
