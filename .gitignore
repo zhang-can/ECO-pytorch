@@ -105,3 +105,6 @@ ENV/
 data/*.txt
 
 *.pth.tar
+*.pth
+
+output/

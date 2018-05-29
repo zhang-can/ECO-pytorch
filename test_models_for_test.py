@@ -11,6 +11,8 @@ from models import TSN
 from transforms import *
 from ops import ConsensusModule
 
+import os
+
 # options
 parser = argparse.ArgumentParser(
     description="Standard video-level testing")
@@ -18,6 +20,7 @@ parser.add_argument('dataset', type=str, choices=['ucf101', 'hmdb51', 'kinetics'
 parser.add_argument('modality', type=str, choices=['RGB', 'Flow', 'RGBDiff'])
 parser.add_argument('test_list', type=str)
 parser.add_argument('weights', type=str)
+parser.add_argument('result_file', type=str)
 parser.add_argument('--arch', type=str, default="resnet101")
 parser.add_argument('--save_scores', type=str, default=None)
 parser.add_argument('--test_segments', type=int, default=25)
@@ -33,9 +36,9 @@ parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
 parser.add_argument('--gpus', nargs='+', type=int, default=None)
 parser.add_argument('--flow_prefix', type=str, default='')
 parser.add_argument('--rgb_prefix', type=str, default='')
+parser.add_argument('--out_list_path', type=str, default='data/')
 
 args = parser.parse_args()
-
 
 if args.dataset == 'ucf101':
     num_class = 101
@@ -138,35 +141,41 @@ for i, (data, label) in data_gen:
 
 video_pred = [np.argmax(np.mean(x[0], axis=0)) for x in output]
 
-video_labels = [x[1] for x in output]
+video_ids = [x[1] for x in output]
 
+category_lines = open(os.path.join(args.out_list_path, '{}_category.txt'.format(args.dataset))).readlines()
+categories = [line.rstrip() for line in category_lines]
 
-cf = confusion_matrix(video_labels, video_pred).astype(float)
+test_results = ["{};{}".format(video_ids[i], categories[int(video_pred[i])]) for i in range(len(output))]
 
-cls_cnt = cf.sum(axis=1)
-cls_hit = np.diag(cf)
+open(os.path.join(args.result_file),'w').write('\n'.join(test_results))
 
-cls_acc = cls_hit / cls_cnt
+# cf = confusion_matrix(video_labels, video_pred).astype(float)
 
-print(cls_acc)
+# cls_cnt = cf.sum(axis=1)
+# cls_hit = np.diag(cf)
 
-print('Accuracy {:.02f}%'.format(np.mean(cls_acc) * 100))
+# cls_acc = cls_hit / cls_cnt
 
-if args.save_scores is not None:
+# print(cls_acc)
 
-    # reorder before saving
-    name_list = [x.strip().split()[0] for x in open(args.test_list)]
+# print('Accuracy {:.02f}%'.format(np.mean(cls_acc) * 100))
 
-    order_dict = {e:i for i, e in enumerate(sorted(name_list))}
+# if args.save_scores is not None:
 
-    reorder_output = [None] * len(output)
-    reorder_label = [None] * len(output)
+#     # reorder before saving
+#     name_list = [x.strip().split()[0] for x in open(args.test_list)]
 
-    for i in range(len(output)):
-        idx = order_dict[name_list[i]]
-        reorder_output[idx] = output[i]
-        reorder_label[idx] = video_labels[i]
+#     order_dict = {e:i for i, e in enumerate(sorted(name_list))}
 
-    np.savez(args.save_scores, scores=reorder_output, labels=reorder_label)
+#     reorder_output = [None] * len(output)
+#     reorder_label = [None] * len(output)
+
+#     for i in range(len(output)):
+#         idx = order_dict[name_list[i]]
+#         reorder_output[idx] = output[i]
+#         reorder_label[idx] = video_labels[i]
+
+#     np.savez(args.save_scores, scores=reorder_output, labels=reorder_label)
 
 
