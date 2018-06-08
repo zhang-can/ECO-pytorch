@@ -1,5 +1,14 @@
 # ECO-pytorch
 
+* This unofficial repo implements the ECO network structure with PyTorch, official repo is [here](https://github.com/mzolfaghari/ECO-efficient-video-understanding).
+* Pre-trained model for 2D-Net is provided by [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch), and 3D-Net use the Kinetics-pretrained model of 3D-Resnet18 provided by [3D-ResNets-PyTorch](https://github.com/kenshohara/3D-ResNets-PyTorch).
+* Codes modified from [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch).
+
+> paper info:
+> **"ECO: Efficient Convolutional Network for Online Video Understanding"**
+> By Mohammadreza Zolfaghari, Kamaljeet Singh, Thomas Brox
+> [paper link](https://arxiv.org/pdf/1804.09066.pdf)
+
 ## Environment:
 * Python 3.6.4
 * PyTorch 0.3.1
@@ -17,9 +26,10 @@ python gen_dataset_lists.py <ucf101/something> <dataset_frames_root_path>
 ```
 e.g. python gen_dataset_lists.py something ~/dataset/20bn-something-something-v1/
 
-> Note that:
-> 1. The dataset should be organized as: <dataset_frames_root_path>/<video_name>/<frame_images>
-> 2. If your <frame_images> filename contains prefix, you should specific that using "--rgb_prefix" argument
+```
+The dataset should be organized as:
+<dataset_frames_root_path>/<video_name>/<frame_images>
+```
 
 ## Training
 
