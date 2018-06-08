@@ -4,10 +4,10 @@
 * Pre-trained model for 2D-Net is provided by [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch), and 3D-Net use the Kinetics-pretrained model of 3D-Resnet18 provided by [3D-ResNets-PyTorch](https://github.com/kenshohara/3D-ResNets-PyTorch).
 * Codes modified from [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch).
 
-> PAPER INFO:<br>
-> **"ECO: Efficient Convolutional Network for Online Video Understanding"**<br>
-> By Mohammadreza Zolfaghari, Kamaljeet Singh, Thomas Brox<br>
-> [paper link](https://arxiv.org/pdf/1804.09066.pdf)
+## PAPER INFO
+**"ECO: Efficient Convolutional Network for Online Video Understanding"**<br>
+By Mohammadreza Zolfaghari, Kamaljeet Singh, Thomas Brox<br>
+[paper link](https://arxiv.org/pdf/1804.09066.pdf)
 
 ## Environment:
 * Python 3.6.4
