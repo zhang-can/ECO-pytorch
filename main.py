@@ -47,7 +47,11 @@ def main():
     # and should contain a params key, containing a list of parameters belonging to it. 
     # Other keys should match the keyword arguments accepted by the optimizers, 
     # and will be used as optimization options for this group.
-    policies = model.get_optim_policies()
+    if args.arch == "BN2to1D":
+        policies = model.get_optim_policies_BN2to1D()
+    else:
+        policies = model.get_optim_policies()
+
     train_augmentation = model.get_augmentation()
 
     model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
@@ -84,8 +88,8 @@ def main():
                    image_tmpl=args.rgb_prefix+"{:05d}.jpg" if args.modality in ["RGB", "RGBDiff"] else args.flow_prefix+"{}_{:05d}.jpg",
                    transform=torchvision.transforms.Compose([
                        train_augmentation,
-                       Stack(roll=args.arch == 'BNInception'),
-                       ToTorchFormatTensor(div=args.arch != 'BNInception'),
+                       Stack(roll=(args.arch == 'BNInception') or (args.arch == 'ECO')),
+                       ToTorchFormatTensor(div=(args.arch != 'BNInception') and (args.arch != 'ECO')),
                        normalize,
                    ])),
         batch_size=args.batch_size, shuffle=True,
@@ -100,8 +104,8 @@ def main():
                    transform=torchvision.transforms.Compose([
                        GroupScale(int(scale_size)),
                        GroupCenterCrop(crop_size),
-                       Stack(roll=args.arch == 'BNInception'),
-                       ToTorchFormatTensor(div=args.arch != 'BNInception'),
+                       Stack(roll=(args.arch == 'BNInception') or (args.arch == 'ECO')),
+                       ToTorchFormatTensor(div=(args.arch != 'BNInception') and (args.arch != 'ECO')),
                        normalize,
                    ])),
         batch_size=args.batch_size, shuffle=False,
@@ -164,6 +168,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     end = time.time()
     for i, (input, target) in enumerate(train_loader):
+        # discard final batch
+        if i == len(train_loader)-1:
+            break
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -174,6 +181,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # compute output, output size: [batch_size, num_class]
         output = model(input_var)
+
         loss = criterion(output, target_var)
 
         # measure accuracy and record loss
@@ -184,9 +192,24 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
 
         # compute gradient and do SGD step
-        optimizer.zero_grad()
-
         loss.backward()
+
+        if i % args.iter_size == 0:
+            # scale down gradients when iter size is functioning
+            if args.iter_size != 1:
+                for g in optimizer.param_groups:
+                    for p in g['params']:
+                        p.grad /= args.iter_size
+
+            if args.clip_gradient is not None:
+                total_norm = clip_grad_norm(model.parameters(), args.clip_gradient)
+                if total_norm > args.clip_gradient:
+                    print("clipping gradient: {} with coef {}".format(total_norm, args.clip_gradient / total_norm))
+            else:
+                total_norm = 0
+
+            optimizer.step()
+            optimizer.zero_grad()
 
         if args.clip_gradient is not None:
             total_norm = clip_grad_norm(model.parameters(), args.clip_gradient)
@@ -221,6 +244,9 @@ def validate(val_loader, model, criterion, iter, logger=None):
 
     end = time.time()
     for i, (input, target) in enumerate(val_loader):
+        # discard final batch
+        if i == len(val_loader)-1:
+            break
         target = target.cuda(async=True)
         input_var = torch.autograd.Variable(input, volatile=True)
         target_var = torch.autograd.Variable(target, volatile=True)

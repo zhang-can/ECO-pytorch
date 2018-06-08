@@ -18,6 +18,7 @@ class TSN(nn.Module):
         self.dropout = dropout
         self.crop_num = crop_num
         self.consensus_type = consensus_type
+        self.base_model_name = base_model
         if not before_softmax and consensus_type != 'avg':
             raise ValueError("Only avg consensus can be used after Softmax")
 
@@ -38,7 +39,11 @@ TSN Configurations:
 
         self._prepare_base_model(base_model)
 
+        # zc comments
         feature_dim = self._prepare_tsn(num_class)
+        # modules = list(self.modules())
+        # print(modules)
+        # zc comments end
 
         '''
         # zc: print "NN variable name"
@@ -115,6 +120,32 @@ TSN Configurations:
             elif self.modality == 'RGBDiff':
                 self.input_mean = self.input_mean * (1 + self.new_length)
 
+        elif base_model == 'ECO':
+            import tf_model_zoo
+            self.base_model = getattr(tf_model_zoo, base_model)(num_segments=self.num_segments)
+            self.base_model.last_layer_name = 'fc_final'
+            self.input_size = 224
+            self.input_mean = [104, 117, 128]
+            self.input_std = [1]
+
+            if self.modality == 'Flow':
+                self.input_mean = [128]
+            elif self.modality == 'RGBDiff':
+                self.input_mean = self.input_mean * (1 + self.new_length)
+
+        elif base_model == 'BN2to1D':
+            import tf_model_zoo
+            self.base_model = getattr(tf_model_zoo, base_model)(num_segments=self.num_segments)
+            self.base_model.last_layer_name = 'fc'
+            self.input_size = 224
+            self.input_mean = [104, 117, 128]
+            self.input_std = [1]
+
+            if self.modality == 'Flow':
+                self.input_mean = [128]
+            elif self.modality == 'RGBDiff':
+                self.input_mean = self.input_mean * (1 + self.new_length)
+
         elif 'inception' in base_model:
             import tf_model_zoo
             self.base_model = getattr(tf_model_zoo, base_model)()
@@ -143,6 +174,8 @@ TSN Configurations:
                         # shutdown update in frozen mode
                         m.weight.requires_grad = False
                         m.bias.requires_grad = False
+        else:
+            print("No BN layer Freezing.")
 
     def partialBN(self, enable):
         self._enable_pbn = enable
@@ -159,7 +192,7 @@ TSN Configurations:
         for m in self.modules():
             # (conv1d or conv2d) 1st layer's params will be append to list: first_conv_weight & first_conv_bias, total num 1 respectively(1 conv2d)
             # (conv1d or conv2d or Linear) from 2nd layers' params will be append to list: normal_weight & normal_bias, total num 69 respectively(68 Conv2d + 1 Linear)
-            if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d):
+            if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d) or isinstance(m, torch.nn.Conv3d):
                 ps = list(m.parameters())
                 conv_cnt += 1
                 if conv_cnt == 1:
@@ -183,10 +216,15 @@ TSN Configurations:
                 # later BN's are frozen
                 if not self._enable_pbn or bn_cnt == 1:
                     bn.extend(list(m.parameters()))
+            elif isinstance(m, torch.nn.BatchNorm3d):
+                bn_cnt += 1
+                # 4
+                # later BN's are frozen
+                if not self._enable_pbn or bn_cnt == 1:
+                    bn.extend(list(m.parameters()))
             elif len(m._modules) == 0:
                 if len(list(m.parameters())) > 0:
                     raise ValueError("New atomic module type: {}. Need to give it a learning policy".format(type(m)))
-
         return [
             {'params': first_conv_weight, 'lr_mult': 5 if self.modality == 'Flow' else 1, 'decay_mult': 1,
              'name': "first_conv_weight"},
@@ -200,6 +238,75 @@ TSN Configurations:
              'name': "BN scale/shift"},
         ]
 
+    def get_optim_policies_BN2to1D(self):
+        first_conv_weight = []
+        first_conv_bias = []
+        normal_weight = []
+        normal_bias = []
+        bn = []
+        last_conv_weight = []
+        last_conv_bias = []
+
+        conv_cnt = 0
+        bn_cnt = 0
+        for m in self.modules():
+            # (conv1d or conv2d) 1st layer's params will be append to list: first_conv_weight & first_conv_bias, total num 1 respectively(1 conv2d)
+            # (conv1d or conv2d or Linear) from 2nd layers' params will be append to list: normal_weight & normal_bias, total num 69 respectively(68 Conv2d + 1 Linear)
+            if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d):
+                ps = list(m.parameters())
+                conv_cnt += 1
+                if conv_cnt == 1:
+                    first_conv_weight.append(ps[0])
+                    if len(ps) == 2:
+                        first_conv_bias.append(ps[1])
+                else:
+                    normal_weight.append(ps[0])
+                    if len(ps) == 2:
+                        normal_bias.append(ps[1])
+            elif isinstance(m, torch.nn.Conv3d):
+                ps = list(m.parameters())
+                last_conv_weight.append(ps[0])
+                if len(ps) == 2:
+                    last_conv_bias.append(ps[1])
+            elif isinstance(m, torch.nn.Linear):
+                ps = list(m.parameters())
+                normal_weight.append(ps[0])
+                if len(ps) == 2:
+                    normal_bias.append(ps[1])
+            # (BatchNorm1d or BatchNorm2d) params will be append to list: bn, total num 2 (enabled pbn, so only: 1st BN layer's weight + 1st BN layer's bias)
+            elif isinstance(m, torch.nn.BatchNorm1d):
+                bn.extend(list(m.parameters()))
+            elif isinstance(m, torch.nn.BatchNorm2d):
+                bn_cnt += 1
+                # later BN's are frozen
+                if not self._enable_pbn or bn_cnt == 1:
+                    bn.extend(list(m.parameters()))
+            elif isinstance(m, torch.nn.BatchNorm3d):
+                bn_cnt += 1
+                # 4
+                # later BN's are frozen
+                if not self._enable_pbn or bn_cnt == 1:
+                    bn.extend(list(m.parameters()))
+            elif len(m._modules) == 0:
+                if len(list(m.parameters())) > 0:
+                    raise ValueError("New atomic module type: {}. Need to give it a learning policy".format(type(m)))
+        return [
+            {'params': first_conv_weight, 'lr_mult': 5 if self.modality == 'Flow' else 1, 'decay_mult': 1,
+             'name': "first_conv_weight"},
+            {'params': first_conv_bias, 'lr_mult': 10 if self.modality == 'Flow' else 2, 'decay_mult': 0,
+             'name': "first_conv_bias"},
+            {'params': normal_weight, 'lr_mult': 1, 'decay_mult': 1,
+             'name': "normal_weight"},
+            {'params': normal_bias, 'lr_mult': 2, 'decay_mult': 0,
+             'name': "normal_bias"},
+             {'params': last_conv_weight, 'lr_mult': 5, 'decay_mult': 1,
+             'name': "last_conv_weight"},
+            {'params': last_conv_bias, 'lr_mult': 10, 'decay_mult': 0,
+             'name': "last_conv_bias"},
+            {'params': bn, 'lr_mult': 1, 'decay_mult': 0,
+             'name': "BN scale/shift"},
+        ]
+
     def forward(self, input):
         sample_len = (3 if self.modality == "RGB" else 2) * self.new_length
 
@@ -207,22 +314,37 @@ TSN Configurations:
             sample_len = 3 * self.new_length
             input = self._get_diff(input)
 
+        # input.size(): [32, 9, 224, 224]
+        # after view() func: [96, 3, 224, 224]
+        # print(input.view((-1, sample_len) + input.size()[-2:]).size())
         base_out = self.base_model(input.view((-1, sample_len) + input.size()[-2:]))
 
+        # zc comments
         if self.dropout > 0:
             base_out = self.new_fc(base_out)
 
         if not self.before_softmax:
             base_out = self.softmax(base_out)
+        # zc comments end
+        
         if self.reshape:
-            # base_out.size(): [96, 101]
-            base_out = base_out.view((-1, self.num_segments) + base_out.size()[1:])
-            # base_out.size(): [32, 3, 101], [batch_size, num_segments, num_class] respectively
+          
+            if self.base_model_name == 'BN2to1D':
+                output = base_out
+                output = self.consensus(base_out)
+                return output
+            elif self.base_model_name == 'ECO':
+                output = base_out
+                output = self.consensus(base_out)
+                return output
+            else:
+                # base_out.size(): [32, 3, 101], [batch_size, num_segments, num_class] respectively
+                base_out = base_out.view((-1, self.num_segments) + base_out.size()[1:])
+                # output.size(): [32, 1, 101]
+                output = self.consensus(base_out)
+                # output after squeeze(1): [32, 101], forward() returns size: [batch_size, num_class]
+                return output.squeeze(1)
 
-        output = self.consensus(base_out)
-        # output.size(): [32, 1, 101]
-        # output after squeeze(1): [32, 101], forward() returns size: [batch_size, num_class]
-        return output.squeeze(1)
 
     def _get_diff(self, input, keep_rgb=False):
         input_c = 3 if self.modality in ["RGB", "RGBDiff"] else 2
