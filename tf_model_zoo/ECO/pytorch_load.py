@@ -8,8 +8,8 @@ from torch.nn.init import normal, constant
 
 class ECO(nn.Module):
     def __init__(self, model_path='tf_model_zoo/ECO/ECO.yaml', num_classes=101,
-                       weight_url_2d='https://s3.us-east-2.amazonaws.com/zhangcan/bninception_rgb_kinetics_init.pth',
-                       weight_url_3d='https://s3.us-east-2.amazonaws.com/zhangcan/resnet-18-kinetics_init.pth',
+                       weight_url_2d='http://pa0630vji.bkt.gdipper.com/zhangcan/pth/models/bninception_rgb_kinetics_init-d4ee618d3399.pth',
+                       weight_url_3d='http://pa0630vji.bkt.gdipper.com/zhangcan/pth/models/resnet-18-kinetics_init-ead73157.pth',
                        num_segments=4):
         super(ECO, self).__init__()
 
