@@ -8,8 +8,7 @@ from torch.nn.init import normal, constant
 
 class ECO(nn.Module):
     def __init__(self, model_path='tf_model_zoo/ECO/ECO.yaml', num_classes=101,
-                       weight_url_2d='http://pa0630vji.bkt.gdipper.com/zhangcan/pth/models/bninception_rgb_kinetics_init-d4ee618d3399.pth',
-                       weight_url_3d='http://pa0630vji.bkt.gdipper.com/zhangcan/pth/models/resnet-18-kinetics_init-ead73157.pth',
+                       weight_url='http://pa0630vji.bkt.gdipper.com/zhangcan/pth/models/kin_ECO_rgb_checkpoint_epoch_5-c4b5bd6c.pth.tar',
                        num_segments=4):
         super(ECO, self).__init__()
 
@@ -41,66 +40,18 @@ class ECO(nn.Module):
                 channel = self._channel_dict[in_var[0]]
                 self._channel_dict[out_var[0]] = channel
 
-        # load part of the pretrained model
-        # pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url)
 
-        
-        # use 2 pretrained models 
-        pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url_2d)
-        pretrained_dict_3d = torch.utils.model_zoo.load_url(weight_url_3d)
-
-        # pretrained_dict_2d = torch.load("/home/zhangcan/pretrained_models/bninception_rgb_kinetics_init-d4ee618d3399.pth")
-        # pretrained_dict_3d = torch.load("/home/zhangcan/pretrained_models/resnet-18-kinetics.pth")
-        model_dict = self.state_dict()
-        new_state_dict = {k: v for k, v in pretrained_dict_2d['state_dict'].items() if k in model_dict}
-        rename_layer_dict = {
-            'fc_final': 'fc',
-            'res5b_bn': 'layer4.1.bn2',
-            'res5b_2': 'layer4.1.conv2',
-            'res5b_1_bn': 'layer4.1.bn1',
-            'res5b_1': 'layer4.1.conv1',
-            'res5a_bn': 'layer4.0.bn2',
-            'res5a_2': 'layer4.0.conv2',
-            'res5a_1_bn': 'layer4.0.bn1',
-            'res5a_1': 'layer4.0.conv1',
-            'res4b_bn': 'layer3.1.bn2',
-            'res4b_2': 'layer3.1.conv2',
-            'res4b_1_bn': 'layer3.1.bn1',
-            'res4b_1': 'layer3.1.conv1',
-            'res4a_bn': 'layer3.0.bn2',
-            'res4a_2': 'layer3.0.conv2',
-            'res4a_1_bn': 'layer3.0.bn1',
-            'res4a_1': 'layer3.0.conv1',
-            'res3b_bn': 'layer2.1.bn2',
-            'res3b_2': 'layer2.1.conv2',
-            'res3b_1_bn': 'layer2.1.bn1',
-            'res3b_1': 'layer2.1.conv1',
-            'res3a_bn': 'layer2.0.bn2',
-            'res3a_2': 'layer2.0.conv2',
-            'res3a_1_bn': 'layer2.0.bn1',
-            'res3a_1': 'layer2.0.conv1'
-        }
-        for k, v in pretrained_dict_3d['state_dict'].items():
-            pre_layer_name = k[7:]
-            for key, value in rename_layer_dict.items():
-                if value in pre_layer_name:
-                    after_layer_name = pre_layer_name.replace(value, key)
-                    new_state_dict[after_layer_name] = v
-
-        # 2d Net dim1 output num: 96, first layer in pretrained 3d Net model (res3a_1) dim1 only have 64, so expand it to 96
-        new_state_dict['res3a_1.weight'] = torch.cat((new_state_dict['res3a_1.weight'], torch.split(new_state_dict['res3a_1.weight'], 32, 1)[0]), 1)
-        
-
-        '''
         # load pretrained model on other dataset
         model_dict = self.state_dict()
 
-        pretrained_on_sth_sth = torch.load("/home/zhangcan/EXP/tsn-modified/something_ECO_rgb_pretrained_model.pth.tar")
-        new_state_dict = {k[18:]: v for k, v in pretrained_on_sth_sth['state_dict'].items() if k[18:] in model_dict}
-        '''
+        pretrained_on_kin = torch.utils.model_zoo.load_url(weight_url)
+        new_state_dict = {k[18:]: v for k, v in pretrained_on_kin['state_dict'].items() if k[18:] in model_dict}
+        
 
         # init the layer names which is not in pretrained model dict
         un_init_dict_keys = [k for k in model_dict.keys() if k not in new_state_dict]
+
+        print(un_init_dict_keys)
 
         std = 0.001
         for k in un_init_dict_keys:
