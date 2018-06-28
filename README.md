@@ -9,6 +9,12 @@
 By Mohammadreza Zolfaghari, Kamaljeet Singh, Thomas Brox<br>
 [paper link](https://arxiv.org/pdf/1804.09066.pdf)
 
+## NOTE
+
+* **I have only tested the ECO-Lite-4F architecture, which achieves ~85% in accuracy(87.4% in paper).**
+* **Recently I'm busy with my exam, the repo will be updated after 15th, July.**
+* **Sorry for that! Please keep watching, any contribution is welcomed!**
+
 ## Environment:
 * Python 3.6.4
 * PyTorch 0.3.1
