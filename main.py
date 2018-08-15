@@ -32,7 +32,7 @@ def main():
     else:
         raise ValueError('Unknown dataset '+args.dataset)
 
-    model = TSN(num_class, args.num_segments, args.modality,
+    model = TSN(num_class, args.num_segments, args.pretrained_parts, args.modality,
                 base_model=args.arch,
                 consensus_type=args.consensus_type, dropout=args.dropout, partial_bn=not args.no_partialbn)
 

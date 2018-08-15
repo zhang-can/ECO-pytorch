@@ -10,6 +10,8 @@ parser.add_argument('--arch', type=str, default="resnet101")
 parser.add_argument('--num_segments', type=int, default=3)
 parser.add_argument('--consensus_type', type=str, default='avg',
                     choices=['avg', 'max', 'topk', 'identity', 'rnn', 'cnn'])
+parser.add_argument('--pretrained_parts', type=str, default='both',
+                    choices=['scratch', '2D', '3D', 'both'])
 parser.add_argument('--k', type=int, default=3)
 
 parser.add_argument('--dropout', '--do', default=0.5, type=float,

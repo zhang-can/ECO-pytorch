@@ -10,9 +10,12 @@ def parse_expr(expr):
     return parts[0].split(','), parts[1], parts[2].split(',')
 
 
-def get_basic_layer(info, channels=None, conv_bias=False):
+def get_basic_layer(info, channels=None, conv_bias=False, num_segments=4):
     id = info['id']
+
     attr = info['attrs'] if 'attrs' in info else list()
+    if id=="res5b_pool":
+        attr['kernel_d'] = num_segments / 4
 
     out, op, in_vars = parse_expr(info['expr'])
     assert(len(out) == 1)

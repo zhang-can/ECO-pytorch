@@ -5,7 +5,7 @@ from transforms import *
 from torch.nn.init import normal, constant
 
 class TSN(nn.Module):
-    def __init__(self, num_class, num_segments, modality,
+    def __init__(self, num_class, num_segments, pretrained_parts, modality,
                  base_model='resnet101', new_length=None,
                  consensus_type='avg', before_softmax=True,
                  dropout=0.8,
@@ -13,6 +13,7 @@ class TSN(nn.Module):
         super(TSN, self).__init__()
         self.modality = modality
         self.num_segments = num_segments
+        self.pretrained_parts = pretrained_parts
         self.reshape = True
         self.before_softmax = before_softmax
         self.dropout = dropout
@@ -122,7 +123,7 @@ TSN Configurations:
 
         elif base_model == 'ECO':
             import tf_model_zoo
-            self.base_model = getattr(tf_model_zoo, base_model)(num_segments=self.num_segments)
+            self.base_model = getattr(tf_model_zoo, base_model)(num_segments=self.num_segments, pretrained_parts=self.pretrained_parts)
             self.base_model.last_layer_name = 'fc_final'
             self.input_size = 224
             self.input_mean = [104, 117, 128]
