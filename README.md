@@ -1,4 +1,9 @@
-# ECO-pytorch
+# ECO-pytorch(not finished yet!)
+
+## NOTE
+
+* **This repo is not finished yet!**
+* **Please keep watching, any contribution is welcomed!**
 
 * This unofficial repo implements the ECO network structure with PyTorch, official repo is [here](https://github.com/mzolfaghari/ECO-efficient-video-understanding).
 * Pre-trained model for 2D-Net is provided by [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch), and 3D-Net use the Kinetics-pretrained model of 3D-Resnet18 provided by [3D-ResNets-PyTorch](https://github.com/kenshohara/3D-ResNets-PyTorch).
@@ -8,12 +13,6 @@
 **"ECO: Efficient Convolutional Network for Online Video Understanding"**<br>
 By Mohammadreza Zolfaghari, Kamaljeet Singh, Thomas Brox<br>
 [paper link](https://arxiv.org/pdf/1804.09066.pdf)
-
-## NOTE
-
-* **I have only tested the ECO-Lite-4F architecture, which achieves ~85% in accuracy(87.4% in paper).**
-* **Recently I'm busy with my exam, the repo will be updated after 15th, July.**
-* **Sorry for that! Please keep watching, any contribution is welcomed!**
 
 ## Environment:
 * Python 3.6.4
