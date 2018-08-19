@@ -3,19 +3,16 @@ from torch import nn
 from .layer_factory import get_basic_layer, parse_expr
 import torch.utils.model_zoo as model_zoo
 import yaml
-from torch.nn.init import normal, constant, xavier_uniform
+from torch.nn.init import normal, constant
 
 
 class ECO(nn.Module):
     def __init__(self, model_path='tf_model_zoo/ECO/ECO.yaml', num_classes=101,
-                       weight_url_2d='http://pa0630vji.bkt.gdipper.com/zhangcan/pth/models/bninception_rgb_kinetics_init-d4ee618d3399.pth',
-                       weight_url_3d='http://pa0630vji.bkt.gdipper.com/zhangcan/pth/models/resnet-18-kinetics_init-ead73157.pth',
+                       weight_url='https://s3.us-east-2.amazonaws.com/zhangcan/kin_ECO_epoch-12-c89e9dc0.pth.tar',
                        num_segments=4, pretrained_parts='both'):
         super(ECO, self).__init__()
 
         self.num_segments = num_segments
-
-        self.pretrained_parts = pretrained_parts
 
         manifest = yaml.load(open(model_path))
 
@@ -29,7 +26,7 @@ class ECO(nn.Module):
             if op != 'Concat' and op != 'Eltwise':
                 id, out_name, module, out_channel, in_name = get_basic_layer(l,
                                                                 3 if len(self._channel_dict) == 0 else self._channel_dict[in_var[0]],
-                                                                             conv_bias=False if op == 'Conv3d' else True, num_segments=num_segments)
+                                                                             conv_bias=False if op == 'Conv3d' else True)
 
                 self._channel_dict[out_name] = out_channel
                 setattr(self, id, module)
@@ -43,96 +40,28 @@ class ECO(nn.Module):
                 channel = self._channel_dict[in_var[0]]
                 self._channel_dict[out_var[0]] = channel
 
+
+        # load pretrained model on other dataset
         model_dict = self.state_dict()
-        print("pretrained_parts: ", pretrained_parts)
 
-        rename_layer_dict = {
-            'fc_final': 'fc',
-            'res5b_bn': 'layer4.1.bn2',
-            'res5b_2': 'layer4.1.conv2',
-            'res5b_1_bn': 'layer4.1.bn1',
-            'res5b_1': 'layer4.1.conv1',
-            'res5a_bn': 'layer4.0.bn2',
-            'res5a_2': 'layer4.0.conv2',
-            'res5a_1_bn': 'layer4.0.bn1',
-            'res5a_1': 'layer4.0.conv1',
-            'res4b_bn': 'layer3.1.bn2',
-            'res4b_2': 'layer3.1.conv2',
-            'res4b_1_bn': 'layer3.1.bn1',
-            'res4b_1': 'layer3.1.conv1',
-            'res4a_bn': 'layer3.0.bn2',
-            'res4a_2': 'layer3.0.conv2',
-            'res4a_1_bn': 'layer3.0.bn1',
-            'res4a_1': 'layer3.0.conv1',
-            'res3b_bn': 'layer2.1.bn2',
-            'res3b_2': 'layer2.1.conv2',
-            'res3b_1_bn': 'layer2.1.bn1',
-            'res3b_1': 'layer2.1.conv1',
-            'res3a_bn': 'layer2.0.bn2',
-            'res3a_2': 'layer2.0.conv2',
-            'res3a_1_bn': 'layer2.0.bn1',
-            'res3a_1': 'layer2.0.conv1'
-        }
-
-        if pretrained_parts == "scratch":
-            
-            new_state_dict = {}
+        pretrained_on_kin = torch.utils.model_zoo.load_url(weight_url)
+        new_state_dict = {k[18:]: v for k, v in pretrained_on_kin['state_dict'].items() if k[18:] in model_dict}
         
-        elif pretrained_parts == "2D":
-            
-            pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url_2d)
-            new_state_dict = {k: v for k, v in pretrained_dict_2d['state_dict'].items() if k in model_dict}
-        
-        elif pretrained_parts == "3D":
-            
-            pretrained_dict_3d = torch.utils.model_zoo.load_url(weight_url_3d)
-            new_state_dict = {}
-            for k, v in pretrained_dict_3d['state_dict'].items():
-                pre_layer_name = k[7:]
-                for key, value in rename_layer_dict.items():
-                    if value in pre_layer_name:
-                        after_layer_name = pre_layer_name.replace(value, key)
-                        new_state_dict[after_layer_name] = v
-            # 2d Net dim1 output num: 96, first layer in pretrained 3d Net model (res3a_1) dim1 only have 64, so expand it to 96
-            new_state_dict['res3a_1.weight'] = torch.cat((new_state_dict['res3a_1.weight'], torch.split(new_state_dict['res3a_1.weight'], 32, 1)[0]), 1)
-        
-        elif pretrained_parts == "both":
-            
-            pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url_2d)
-            new_state_dict = {k: v for k, v in pretrained_dict_2d['state_dict'].items() if k in model_dict}
-            pretrained_dict_3d = torch.utils.model_zoo.load_url(weight_url_3d)
-            for k, v in pretrained_dict_3d['state_dict'].items():
-                pre_layer_name = k[7:]
-                for key, value in rename_layer_dict.items():
-                    if value in pre_layer_name:
-                        after_layer_name = pre_layer_name.replace(value, key)
-                        new_state_dict[after_layer_name] = v
-            # 2d Net dim1 output num: 96, first layer in pretrained 3d Net model (res3a_1) dim1 only have 64, so expand it to 96
-            new_state_dict['res3a_1.weight'] = torch.cat((new_state_dict['res3a_1.weight'], torch.split(new_state_dict['res3a_1.weight'], 32, 1)[0]), 1)
 
         # init the layer names which is not in pretrained model dict
         un_init_dict_keys = [k for k in model_dict.keys() if k not in new_state_dict]
-        print("un_init_dict_keys: ", un_init_dict_keys)
-        print("\n------------------------------------")
+
+        print(un_init_dict_keys)
 
         std = 0.001
         for k in un_init_dict_keys:
             new_state_dict[k] = torch.DoubleTensor(model_dict[k].size()).zero_()
             if 'weight' in k:
-                if 'bn' in k:
-                    print("{} init as: 1".format(k))
-                    constant(new_state_dict[k], 1)
-                else:
-                    print("{} init as: xavier".format(k))
-                    xavier_uniform(new_state_dict[k])
+                normal(new_state_dict[k], 0, std)
             elif 'bias' in k:
-                print("{} init as: 0".format(k))
                 constant(new_state_dict[k], 0)
 
-        print("------------------------------------")
-
         self.load_state_dict(new_state_dict)
-    
 
 
         # self.load_state_dict(torch.utils.model_zoo.load_url(weight_url))

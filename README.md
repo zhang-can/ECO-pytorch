@@ -41,6 +41,6 @@ e.g. python gen_dataset_lists.py something ~/dataset/20bn-something-something-v1
 ```bash
 python main.py ucf101 RGB <ucf101_rgb_train_list> <ucf101_rgb_val_list> \
         --arch ECO --num_segments 4 --gd 5 --lr 0.001 --lr_steps 30 60 --epochs 80 \
-        -b 32 -i 4 -j 2 --dropout 0.5 --snapshot_pref ucf101_ECO --rgb_prefix img_ \
+        -b 32 -i 1 -j 1 --dropout 0.8 --snapshot_pref ucf101_ECO --rgb_prefix img_ \
         --consensus_type identity --eval-freq 1
 ```
