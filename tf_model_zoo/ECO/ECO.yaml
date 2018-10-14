@@ -152,17 +152,11 @@ layers:
   expr: inception_3c_double_3x3_1_bn<=BN<=inception_3c_double_3x3_1
   id: inception_3c_double_3x3_1_bn
 - {expr: inception_3c_double_3x3_1_bn<=ReLU<=inception_3c_double_3x3_1_bn, id: inception_3c_relu_double_3x3_1}
-- attrs: {kernel_size: 3, num_output: 128, pad: 1, stride: 1}
-  expr: res3a_1<=Conv3d<=inception_3c_double_3x3_1_bn
-  id: res3a_1
-- attrs: {frozen: false}
-  expr: res3a_1_bn<=BN3d<=res3a_1
-  id: res3a_1_bn
-- {expr: res3a_1_bn<=ReLU<=res3a_1_bn, id: res3a_1_relu}
-- attrs: {kernel_size: 3, num_output: 128, pad: 1, stride: 1}
-  expr: res3a_2<=Conv3d<=res3a_1_bn
-  id: res3a_2
 
+
+- attrs: {kernel_size: 3, num_output: 128, pad: 1, stride: 1}
+  expr: res3a_2<=Conv3d<=inception_3c_double_3x3_1_bn
+  id: res3a_2
 - attrs: {frozen: false}
   expr: res3a_bn<=BN3d<=res3a_2
   id: res3a_bn
@@ -177,12 +171,12 @@ layers:
 - attrs: {kernel_size: 3, num_output: 128, pad: 1, stride: 1}
   expr: res3b_2<=Conv3d<=res3b_1_bn
   id: res3b_2
-
 - {expr: 'res3b<=Eltwise<=res3b_2,res3a_2', id: res3b}
 - attrs: {frozen: false}
   expr: res3b_bn<=BN3d<=res3b
   id: res3b_bn
 - {expr: res3b_bn<=ReLU<=res3b_bn, id: res3b_relu}
+
 - attrs: {kernel_size: 3, num_output: 256, pad: 1, stride: 2}
   expr: res4a_1<=Conv3d<=res3b_bn
   id: res4a_1
@@ -193,9 +187,13 @@ layers:
 - attrs: {kernel_size: 3, num_output: 256, pad: 1, stride: 1}
   expr: res4a_2<=Conv3d<=res4a_1_bn
   id: res4a_2
+- attrs: {kernel_size: 3, num_output: 256, pad: 1, stride: 2}
+  expr: res4a_down<=Conv3d<=res3b_bn
+  id: res4a_down
+- {expr: 'res4a<=Eltwise<=res4a_2,res4a_down', id: res4a}
 
 - attrs: {frozen: false}
-  expr: res4a_bn<=BN3d<=res4a_2
+  expr: res4a_bn<=BN3d<=res4a
   id: res4a_bn
 - {expr: res4a_bn<=ReLU<=res4a_bn, id: res4a_relu}
 - attrs: {kernel_size: 3, num_output: 256, pad: 1, stride: 1}
@@ -208,11 +206,12 @@ layers:
 - attrs: {kernel_size: 3, num_output: 256, pad: 1, stride: 1}
   expr: res4b_2<=Conv3d<=res4b_1_bn
   id: res4b_2
-- {expr: 'res4b<=Eltwise<=res4b_2,res4a_2', id: res4b}
+- {expr: 'res4b<=Eltwise<=res4b_2,res4a', id: res4b}
 - attrs: {frozen: false}
   expr: res4b_bn<=BN3d<=res4b
   id: res4b_bn
 - {expr: res4b_bn<=ReLU<=res4b_bn, id: res4b_relu}
+
 - attrs: {kernel_size: 3, num_output: 512, pad: 1, stride: 2}
   expr: res5a_1<=Conv3d<=res4b_bn
   id: res5a_1
@@ -223,9 +222,13 @@ layers:
 - attrs: {kernel_size: 3, num_output: 512, pad: 1, stride: 1}
   expr: res5a_2<=Conv3d<=res5a_1_bn
   id: res5a_2
+- attrs: {kernel_size: 3, num_output: 512, pad: 1, stride: 2}
+  expr: res5a_down<=Conv3d<=res4b_bn
+  id: res5a_down
+- {expr: 'res5a<=Eltwise<=res5a_2,res5a_down', id: res5a}
 
 - attrs: {frozen: false}
-  expr: res5a_bn<=BN3d<=res5a_2
+  expr: res5a_bn<=BN3d<=res5a
   id: res5a_bn
 - {expr: res5a_bn<=ReLU<=res5a_bn, id: res5a_relu}
 - attrs: {kernel_size: 3, num_output: 512, pad: 1, stride: 1}
@@ -238,16 +241,16 @@ layers:
 - attrs: {kernel_size: 3, num_output: 512, pad: 1, stride: 1}
   expr: res5b_2<=Conv3d<=res5b_1_bn
   id: res5b_2
-- {expr: 'res5b<=Eltwise<=res5b_2,res5a_2', id: res5b}
+- {expr: 'res5b<=Eltwise<=res5b_2,res5a', id: res5b}
 - attrs: {frozen: false}
   expr: res5b_bn<=BN3d<=res5b
   id: res5b_bn
 - {expr: res5b_bn<=ReLU<=res5b_bn, id: res5b_relu}
 
 - attrs: {kernel_d: 1, kernel_h: 7, kernel_w: 7, stride: 1, mode: ave}
-  expr: res5b_pool<=Pooling3d<=res5b_bn
-  id: res5b_pool
+  expr: global_pool<=Pooling3d<=res5b_bn
+  id: global_pool
 - attrs: {num_output: 400}
-  expr: fc_action<=InnerProduct<=res5b_pool
+  expr: fc_action<=InnerProduct<=global_pool
   id: fc_final
 name: ECO

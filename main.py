@@ -7,12 +7,15 @@ import torchvision
 import torch.nn.parallel
 import torch.backends.cudnn as cudnn
 import torch.optim
-from torch.nn.utils import clip_grad_norm
+from torch.nn.utils import clip_grad_norm_
 
 from dataset import TSNDataSet
 from models import TSN
 from transforms import *
 from opts import parser
+import sys
+import torch.utils.model_zoo as model_zoo
+from torch.nn.init import constant_, xavier_uniform_
 
 best_prec1 = 0
 
@@ -21,14 +24,30 @@ def main():
     global args, best_prec1
     args = parser.parse_args()
 
+    print("------------------------------------")
+    print("Environment Versions:")
+    print("- Python: {}".format(sys.version))
+    print("- PyTorch: {}".format(torch.__version__))
+    print("- TorchVison: {}".format(torchvision.__version__))
+
+    args_dict = args.__dict__
+    print("------------------------------------")
+    print(args.arch+" Configurations:")
+    for key in args_dict.keys():
+        print("- {}: {}".format(key, args_dict[key]))
+    print("------------------------------------")
+
     if args.dataset == 'ucf101':
         num_class = 101
+        rgb_read_format = "{:05d}.jpg"
     elif args.dataset == 'hmdb51':
         num_class = 51
     elif args.dataset == 'kinetics':
         num_class = 400
+        rgb_read_format = "{:05d}.jpg"
     elif args.dataset == 'something':
         num_class = 174
+        rgb_read_format = "{:04d}.jpg"
     else:
         raise ValueError('Unknown dataset '+args.dataset)
 
@@ -47,14 +66,43 @@ def main():
     # and should contain a params key, containing a list of parameters belonging to it. 
     # Other keys should match the keyword arguments accepted by the optimizers, 
     # and will be used as optimization options for this group.
-    if args.arch == "BN2to1D":
-        policies = model.get_optim_policies_BN2to1D()
-    else:
-        policies = model.get_optim_policies()
+    policies = model.get_optim_policies()
 
     train_augmentation = model.get_augmentation()
 
     model = torch.nn.DataParallel(model, device_ids=args.gpus).cuda()
+
+    model_dict = model.state_dict()
+
+    print("pretrained_parts: ", args.pretrained_parts)
+
+    if args.arch == "ECO":
+        new_state_dict = init_ECO(model_dict)
+    if args.arch == "ECOfull":
+        new_state_dict = init_ECOfull(model_dict)
+    elif args.arch == "C3DRes18":
+        new_state_dict = init_C3DRes18(model_dict)
+
+    un_init_dict_keys = [k for k in model_dict.keys() if k not in new_state_dict]
+    print("un_init_dict_keys: ", un_init_dict_keys)
+    print("\n------------------------------------")
+
+    for k in un_init_dict_keys:
+        new_state_dict[k] = torch.DoubleTensor(model_dict[k].size()).zero_()
+        if 'weight' in k:
+            if 'bn' in k:
+                print("{} init as: 1".format(k))
+                constant_(new_state_dict[k], 1)
+            else:
+                print("{} init as: xavier".format(k))
+                xavier_uniform_(new_state_dict[k])
+        elif 'bias' in k:
+            print("{} init as: 0".format(k))
+            constant_(new_state_dict[k], 0)
+
+    print("------------------------------------")
+
+    model.load_state_dict(new_state_dict)
 
     if args.resume:
         if os.path.isfile(args.resume):
@@ -64,7 +112,7 @@ def main():
             best_prec1 = checkpoint['best_prec1']
             model.load_state_dict(checkpoint['state_dict'])
             print(("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.evaluate, checkpoint['epoch'])))
+                  .format(args.resume, checkpoint['epoch'])))
         else:
             print(("=> no checkpoint found at '{}'".format(args.resume)))
 
@@ -85,11 +133,11 @@ def main():
         TSNDataSet("", args.train_list, num_segments=args.num_segments,
                    new_length=data_length,
                    modality=args.modality,
-                   image_tmpl=args.rgb_prefix+"{:05d}.jpg" if args.modality in ["RGB", "RGBDiff"] else args.flow_prefix+"{}_{:05d}.jpg",
+                   image_tmpl=args.rgb_prefix+rgb_read_format if args.modality in ["RGB", "RGBDiff"] else args.flow_prefix+rgb_read_format,
                    transform=torchvision.transforms.Compose([
                        train_augmentation,
-                       Stack(roll=(args.arch == 'BNInception') or (args.arch == 'ECO')),
-                       ToTorchFormatTensor(div=(args.arch != 'BNInception') and (args.arch != 'ECO')),
+                       Stack(roll=True),
+                       ToTorchFormatTensor(div=False),
                        normalize,
                    ])),
         batch_size=args.batch_size, shuffle=True,
@@ -99,13 +147,13 @@ def main():
         TSNDataSet("", args.val_list, num_segments=args.num_segments,
                    new_length=data_length,
                    modality=args.modality,
-                   image_tmpl=args.rgb_prefix+"{:05d}.jpg" if args.modality in ["RGB", "RGBDiff"] else args.flow_prefix+"{}_{:05d}.jpg",
+                   image_tmpl=args.rgb_prefix+rgb_read_format if args.modality in ["RGB", "RGBDiff"] else args.flow_prefix+rgb_read_format,
                    random_shift=False,
                    transform=torchvision.transforms.Compose([
                        GroupScale(int(scale_size)),
                        GroupCenterCrop(crop_size),
-                       Stack(roll=(args.arch == 'BNInception') or (args.arch == 'ECO')),
-                       ToTorchFormatTensor(div=(args.arch != 'BNInception') and (args.arch != 'ECO')),
+                       Stack(roll=True),
+                       ToTorchFormatTensor(div=False),
                        normalize,
                    ])),
         batch_size=args.batch_size, shuffle=False,
@@ -124,7 +172,7 @@ def main():
     optimizer = torch.optim.SGD(policies,
                                 args.lr,
                                 momentum=args.momentum,
-                                weight_decay=args.weight_decay)
+                                weight_decay=args.weight_decay,nesterov=args.nesterov)
 
     if args.evaluate:
         validate(val_loader, model, criterion, 0)
@@ -150,6 +198,111 @@ def main():
                 'best_prec1': best_prec1,
             }, is_best)
 
+def init_ECO(model_dict):
+
+    weight_url_2d='https://yjxiong.blob.core.windows.net/ssn-models/bninception_rgb_kinetics_init-d4ee618d3399.pth'
+
+    if args.pretrained_parts == "scratch":
+            
+        new_state_dict = {}
+
+    elif args.pretrained_parts == "2D":
+
+        pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url_2d)
+        new_state_dict = {"module.base_model."+k: v for k, v in pretrained_dict_2d['state_dict'].items() if "module.base_model."+k in model_dict}
+
+    elif args.pretrained_parts == "3D":
+
+        new_state_dict = {}
+        pretrained_dict_3d = torch.load("models/C3DResNet18_rgb_16F_kinetics_v1.pth.tar")
+        for k, v in pretrained_dict_3d['state_dict'].items():
+            if (k in model_dict) and (v.size() == model_dict[k].size()):
+                new_state_dict[k] = v
+
+        res3a_2_weight_chunk = torch.chunk(pretrained_dict_3d["state_dict"]["module.base_model.res3a_2.weight"], 4, 1)
+        new_state_dict["module.base_model.res3a_2.weight"] = torch.cat((res3a_2_weight_chunk[0], res3a_2_weight_chunk[1], res3a_2_weight_chunk[2]), 1)
+
+
+    elif args.pretrained_parts == "finetune":
+
+        print(("=> loading model '{}'".format("models/eco_lite_rgb_16F_kinetics_v2.pth.tar")))
+        pretrained_dict = torch.load("models/eco_lite_rgb_16F_kinetics_v2.pth.tar")
+        new_state_dict = {k: v for k, v in pretrained_dict['state_dict'].items() if (k in model_dict) and (v.size() == model_dict[k].size())}
+        print("*"*50)
+        print("Start finetuning ..")
+
+    elif args.pretrained_parts == "both":
+
+        pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url_2d)
+        new_state_dict = {"module.base_model."+k: v for k, v in pretrained_dict_2d['state_dict'].items() if "module.base_model."+k in model_dict}
+        pretrained_dict_3d = torch.load("models/C3DResNet18_rgb_16F_kinetics_v1.pth.tar")
+        for k, v in pretrained_dict_3d['state_dict'].items():
+            if (k in model_dict) and (v.size() == model_dict[k].size()):
+                new_state_dict[k] = v
+
+        res3a_2_weight_chunk = torch.chunk(pretrained_dict_3d["state_dict"]["module.base_model.res3a_2.weight"], 4, 1)
+        new_state_dict["module.base_model.res3a_2.weight"] = torch.cat((res3a_2_weight_chunk[0], res3a_2_weight_chunk[1], res3a_2_weight_chunk[2]), 1)
+
+    return new_state_dict
+
+def init_ECOfull(model_dict):
+
+    weight_url_2d='https://yjxiong.blob.core.windows.net/ssn-models/bninception_rgb_kinetics_init-d4ee618d3399.pth'
+
+    if args.pretrained_parts == "scratch":
+            
+        new_state_dict = {}
+
+    elif args.pretrained_parts == "2D":
+
+        pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url_2d)
+        new_state_dict = {"module.base_model."+k: v for k, v in pretrained_dict_2d['state_dict'].items() if "module.base_model."+k in model_dict}
+
+    elif args.pretrained_parts == "3D":
+
+        new_state_dict = {}
+        pretrained_dict_3d = torch.load("models/C3DResNet18_rgb_16F_kinetics_v1.pth.tar")
+        for k, v in pretrained_dict_3d['state_dict'].items():
+            if (k in model_dict) and (v.size() == model_dict[k].size()):
+                new_state_dict[k] = v
+
+        res3a_2_weight_chunk = torch.chunk(pretrained_dict_3d["state_dict"]["module.base_model.res3a_2.weight"], 4, 1)
+        new_state_dict["module.base_model.res3a_2.weight"] = torch.cat((res3a_2_weight_chunk[0], res3a_2_weight_chunk[1], res3a_2_weight_chunk[2]), 1)
+
+
+    elif args.pretrained_parts == "finetune":
+
+        print(("=> loading model '{}'".format("models/eco_lite_rgb_16F_kinetics_v2.pth.tar")))
+        pretrained_dict = torch.load("models/eco_lite_rgb_16F_kinetics_v2.pth.tar")
+        new_state_dict = {k: v for k, v in pretrained_dict['state_dict'].items() if (k in model_dict) and (v.size() == model_dict[k].size())}
+        print("*"*50)
+        print("Start finetuning ..")
+
+    elif args.pretrained_parts == "both":
+
+        pretrained_dict_2d = torch.utils.model_zoo.load_url(weight_url_2d)
+        new_state_dict = {"module.base_model."+k: v for k, v in pretrained_dict_2d['state_dict'].items() if "module.base_model."+k in model_dict}
+        pretrained_dict_3d = torch.load("models/C3DResNet18_rgb_16F_kinetics_v1.pth.tar")
+        for k, v in pretrained_dict_3d['state_dict'].items():
+            if (k in model_dict) and (v.size() == model_dict[k].size()):
+                new_state_dict[k] = v
+
+        res3a_2_weight_chunk = torch.chunk(pretrained_dict_3d["state_dict"]["module.base_model.res3a_2.weight"], 4, 1)
+        new_state_dict["module.base_model.res3a_2.weight"] = torch.cat((res3a_2_weight_chunk[0], res3a_2_weight_chunk[1], res3a_2_weight_chunk[2]), 1)
+
+    return new_state_dict
+
+def init_C3DRes18(model_dict):
+
+    if args.pretrained_parts == "scratch":
+        new_state_dict = {}
+    elif args.pretrained_parts == "3D":
+        pretrained_dict = torch.load("models/C3DResNet18_rgb_16F_kinetics_v1.pth.tar")
+        new_state_dict = {k: v for k, v in pretrained_dict['state_dict'].items() if (k in model_dict) and (v.size() == model_dict[k].size())}
+    else:
+        raise ValueError('For C3DRes18, "--pretrained_parts" can only be chosen from [scratch, 3D]')
+
+    return new_state_dict
 
 def train(train_loader, model, criterion, optimizer, epoch):
     batch_time = AverageMeter()
@@ -157,6 +310,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
     losses = AverageMeter()
     top1 = AverageMeter()
     top5 = AverageMeter()
+
+    # In PyTorch 0.4, "volatile=True" is deprecated.
+    torch.set_grad_enabled(True)
 
     if args.no_partialbn:
         model.module.partialBN(False)
@@ -176,8 +332,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # target size: [batch_size]
         target = target.cuda(async=True)
-        input_var = torch.autograd.Variable(input)
-        target_var = torch.autograd.Variable(target)
+        input_var = input
+        target_var = target
 
         # compute output, output size: [batch_size, num_class]
         output = model(input_var)
@@ -186,9 +342,9 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output.data, target, topk=(1,5))
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.update(loss.item(), input.size(0))
+        top1.update(prec1.item(), input.size(0))
+        top5.update(prec5.item(), input.size(0))
 
 
         # compute gradient and do SGD step
@@ -202,7 +358,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
                         p.grad /= args.iter_size
 
             if args.clip_gradient is not None:
-                total_norm = clip_grad_norm(model.parameters(), args.clip_gradient)
+                total_norm = clip_grad_norm_(model.parameters(), args.clip_gradient)
                 if total_norm > args.clip_gradient:
                     print("clipping gradient: {} with coef {}".format(total_norm, args.clip_gradient / total_norm))
             else:
@@ -212,7 +368,7 @@ def train(train_loader, model, criterion, optimizer, epoch):
             optimizer.zero_grad()
 
         if args.clip_gradient is not None:
-            total_norm = clip_grad_norm(model.parameters(), args.clip_gradient)
+            total_norm = clip_grad_norm_(model.parameters(), args.clip_gradient)
             if total_norm > args.clip_gradient:
                 print("clipping gradient: {} with coef {}".format(total_norm, args.clip_gradient / total_norm))
 
@@ -239,6 +395,9 @@ def validate(val_loader, model, criterion, iter, logger=None):
     top1 = AverageMeter()
     top5 = AverageMeter()
 
+    # In PyTorch 0.4, "volatile=True" is deprecated.
+    torch.set_grad_enabled(False)
+
     # switch to evaluate mode
     model.eval()
 
@@ -248,8 +407,8 @@ def validate(val_loader, model, criterion, iter, logger=None):
         if i == len(val_loader)-1:
             break
         target = target.cuda(async=True)
-        input_var = torch.autograd.Variable(input, volatile=True)
-        target_var = torch.autograd.Variable(target, volatile=True)
+        input_var = input
+        target_var = target
 
         # compute output
         output = model(input_var)
@@ -258,9 +417,9 @@ def validate(val_loader, model, criterion, iter, logger=None):
         # measure accuracy and record loss
         prec1, prec5 = accuracy(output.data, target, topk=(1,5))
 
-        losses.update(loss.data[0], input.size(0))
-        top1.update(prec1[0], input.size(0))
-        top5.update(prec5[0], input.size(0))
+        losses.update(loss.item(), input.size(0))
+        top1.update(prec1.item(), input.size(0))
+        top5.update(prec5.item(), input.size(0))
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -282,7 +441,7 @@ def validate(val_loader, model, criterion, iter, logger=None):
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
-    filename = '_'.join((args.snapshot_pref, args.modality.lower(), filename))
+    filename = '_'.join((args.snapshot_pref, args.modality.lower(), "epoch", str(state['epoch']), filename))
     torch.save(state, filename)
     if is_best:
         best_name = '_'.join((args.snapshot_pref, args.modality.lower(), 'model_best.pth.tar'))

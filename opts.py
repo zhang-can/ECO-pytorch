@@ -1,6 +1,6 @@
 import argparse
 parser = argparse.ArgumentParser(description="PyTorch implementation of Temporal Segment Networks")
-parser.add_argument('dataset', type=str, choices=['ucf101', 'hmdb51', 'kinetics', 'something'])
+parser.add_argument('dataset', type=str, choices=['ucf101', 'hmdb51', 'kinetics', 'something','jhmdb'])
 parser.add_argument('modality', type=str, choices=['RGB', 'Flow', 'RGBDiff'])
 parser.add_argument('train_list', type=str)
 parser.add_argument('val_list', type=str)
@@ -11,7 +11,7 @@ parser.add_argument('--num_segments', type=int, default=3)
 parser.add_argument('--consensus_type', type=str, default='avg',
                     choices=['avg', 'max', 'topk', 'identity', 'rnn', 'cnn'])
 parser.add_argument('--pretrained_parts', type=str, default='both',
-                    choices=['scratch', '2D', '3D', 'both'])
+                    choices=['scratch', '2D', '3D', 'both','finetune'])
 parser.add_argument('--k', type=int, default=3)
 
 parser.add_argument('--dropout', '--do', default=0.5, type=float,
@@ -37,7 +37,7 @@ parser.add_argument('--weight-decay', '--wd', default=5e-4, type=float,
 parser.add_argument('--clip-gradient', '--gd', default=None, type=float,
                     metavar='W', help='gradient norm clipping (default: disabled)')
 parser.add_argument('--no_partialbn', '--npb', default=False, action="store_true")
-
+parser.add_argument('--nesterov',  default=False)
 # ========================= Monitor Configs ==========================
 parser.add_argument('--print-freq', '-p', default=20, type=int,
                     metavar='N', help='print frequency (default: 10)')

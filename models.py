@@ -2,7 +2,7 @@ from torch import nn
 
 from ops.basic_ops import ConsensusModule, Identity
 from transforms import *
-from torch.nn.init import normal, constant
+from torch.nn.init import xavier_uniform_, constant_
 
 class TSN(nn.Module):
     def __init__(self, num_class, num_segments, pretrained_parts, modality,
@@ -86,11 +86,11 @@ TSN Configurations:
 
         std = 0.001
         if self.new_fc is None:
-            normal(getattr(self.base_model, self.base_model.last_layer_name).weight, 0, std)
-            constant(getattr(self.base_model, self.base_model.last_layer_name).bias, 0)
+            xavier_uniform_(getattr(self.base_model, self.base_model.last_layer_name).weight)
+            constant_(getattr(self.base_model, self.base_model.last_layer_name).bias, 0)
         else:
-            normal(self.new_fc.weight, 0, std)
-            constant(self.new_fc.bias, 0)
+            xavier_uniform_(self.new_fc.weight)
+            constant_(self.new_fc.bias, 0)
         return feature_dim
 
     def _prepare_base_model(self, base_model):
@@ -108,11 +108,11 @@ TSN Configurations:
             elif self.modality == 'RGBDiff':
                 self.input_mean = [0.485, 0.456, 0.406] + [0] * 3 * self.new_length
                 self.input_std = self.input_std + [np.mean(self.input_std) * 2] * 3 * self.new_length
-        elif base_model == 'BNInception':
+        elif base_model == 'C3DRes18':
             import tf_model_zoo
-            self.base_model = getattr(tf_model_zoo, base_model)()
-            self.base_model.last_layer_name = 'fc'
-            self.input_size = 224
+            self.base_model = getattr(tf_model_zoo, base_model)(num_segments=self.num_segments, pretrained_parts=self.pretrained_parts)
+            self.base_model.last_layer_name = 'fc8'
+            self.input_size = 112
             self.input_mean = [104, 117, 128]
             self.input_std = [1]
 
@@ -122,6 +122,19 @@ TSN Configurations:
                 self.input_mean = self.input_mean * (1 + self.new_length)
 
         elif base_model == 'ECO':
+            import tf_model_zoo
+            self.base_model = getattr(tf_model_zoo, base_model)(num_segments=self.num_segments, pretrained_parts=self.pretrained_parts)
+            self.base_model.last_layer_name = 'fc_final'
+            self.input_size = 224
+            self.input_mean = [104, 117, 128]
+            self.input_std = [1]
+
+            if self.modality == 'Flow':
+                self.input_mean = [128]
+            elif self.modality == 'RGBDiff':
+                self.input_mean = self.input_mean * (1 + self.new_length)
+
+        elif base_model == 'ECOfull':
             import tf_model_zoo
             self.base_model = getattr(tf_model_zoo, base_model)(num_segments=self.num_segments, pretrained_parts=self.pretrained_parts)
             self.base_model.last_layer_name = 'fc_final'
@@ -182,28 +195,37 @@ TSN Configurations:
         self._enable_pbn = enable
 
     def get_optim_policies(self):
-        first_conv_weight = []
-        first_conv_bias = []
+        first_3d_conv_weight = []
+        first_3d_conv_bias = []
         normal_weight = []
         normal_bias = []
         bn = []
 
-        conv_cnt = 0
+        conv_2d_cnt = 0
+        conv_3d_cnt = 0
         bn_cnt = 0
         for m in self.modules():
             # (conv1d or conv2d) 1st layer's params will be append to list: first_conv_weight & first_conv_bias, total num 1 respectively(1 conv2d)
             # (conv1d or conv2d or Linear) from 2nd layers' params will be append to list: normal_weight & normal_bias, total num 69 respectively(68 Conv2d + 1 Linear)
-            if isinstance(m, torch.nn.Conv2d) or isinstance(m, torch.nn.Conv1d) or isinstance(m, torch.nn.Conv3d):
+            if isinstance(m, torch.nn.Conv2d):
                 ps = list(m.parameters())
-                conv_cnt += 1
-                if conv_cnt == 1:
-                    first_conv_weight.append(ps[0])
+                conv_2d_cnt += 1
+                normal_weight.append(ps[0])
+                if len(ps) == 2:
+                    normal_bias.append(ps[1])
+
+            elif isinstance(m, torch.nn.Conv3d):
+                ps = list(m.parameters())
+                conv_3d_cnt += 1
+                if conv_3d_cnt == 1:
+                    first_3d_conv_weight.append(ps[0])
                     if len(ps) == 2:
-                        first_conv_bias.append(ps[1])
+                        first_3d_conv_bias.append(ps[1])
                 else:
                     normal_weight.append(ps[0])
                     if len(ps) == 2:
                         normal_bias.append(ps[1])
+
             elif isinstance(m, torch.nn.Linear):
                 ps = list(m.parameters())
                 normal_weight.append(ps[0])
@@ -227,10 +249,10 @@ TSN Configurations:
                 if len(list(m.parameters())) > 0:
                     raise ValueError("New atomic module type: {}. Need to give it a learning policy".format(type(m)))
         return [
-            {'params': first_conv_weight, 'lr_mult': 5 if self.modality == 'Flow' else 1, 'decay_mult': 1,
-             'name': "first_conv_weight"},
-            {'params': first_conv_bias, 'lr_mult': 10 if self.modality == 'Flow' else 2, 'decay_mult': 0,
-             'name': "first_conv_bias"},
+            {'params': first_3d_conv_weight, 'lr_mult': 5 if self.modality == 'Flow' else 1, 'decay_mult': 1,
+             'name': "first_3d_conv_weight"},
+            {'params': first_3d_conv_bias, 'lr_mult': 10 if self.modality == 'Flow' else 2, 'decay_mult': 0,
+             'name': "first_3d_conv_bias"},
             {'params': normal_weight, 'lr_mult': 1, 'decay_mult': 1,
              'name': "normal_weight"},
             {'params': normal_bias, 'lr_mult': 2, 'decay_mult': 0,
@@ -318,7 +340,12 @@ TSN Configurations:
         # input.size(): [32, 9, 224, 224]
         # after view() func: [96, 3, 224, 224]
         # print(input.view((-1, sample_len) + input.size()[-2:]).size())
-        base_out = self.base_model(input.view((-1, sample_len) + input.size()[-2:]))
+        if self.base_model_name == "C3DRes18":
+            before_permute = input.view((-1, sample_len) + input.size()[-2:])
+            input_var = torch.transpose(before_permute.view((-1, self.num_segments) + before_permute.size()[1:]), 1, 2)
+        else:
+            input_var = input.view((-1, sample_len) + input.size()[-2:])
+        base_out = self.base_model(input_var)
 
         # zc comments
         if self.dropout > 0:
@@ -330,11 +357,15 @@ TSN Configurations:
         
         if self.reshape:
           
-            if self.base_model_name == 'BN2to1D':
+            if self.base_model_name == 'C3DRes18':
                 output = base_out
                 output = self.consensus(base_out)
                 return output
             elif self.base_model_name == 'ECO':
+                output = base_out
+                output = self.consensus(base_out)
+                return output
+            elif self.base_model_name == 'ECOfull':
                 output = base_out
                 output = self.consensus(base_out)
                 return output

@@ -3,16 +3,17 @@ from torch import nn
 from .layer_factory import get_basic_layer, parse_expr
 import torch.utils.model_zoo as model_zoo
 import yaml
-from torch.nn.init import normal, constant
 
 
 class ECO(nn.Module):
     def __init__(self, model_path='tf_model_zoo/ECO/ECO.yaml', num_classes=101,
-                       weight_url='https://s3.us-east-2.amazonaws.com/zhangcan/kin_ECO_epoch-12-c89e9dc0.pth.tar',
                        num_segments=4, pretrained_parts='both'):
+
         super(ECO, self).__init__()
 
         self.num_segments = num_segments
+
+        self.pretrained_parts = pretrained_parts
 
         manifest = yaml.load(open(model_path))
 
@@ -26,7 +27,7 @@ class ECO(nn.Module):
             if op != 'Concat' and op != 'Eltwise':
                 id, out_name, module, out_channel, in_name = get_basic_layer(l,
                                                                 3 if len(self._channel_dict) == 0 else self._channel_dict[in_var[0]],
-                                                                             conv_bias=False if op == 'Conv3d' else True)
+                                                                             conv_bias=True if op == 'Conv3d' else True, num_segments=num_segments)
 
                 self._channel_dict[out_name] = out_channel
                 setattr(self, id, module)
@@ -41,31 +42,6 @@ class ECO(nn.Module):
                 self._channel_dict[out_var[0]] = channel
 
 
-        # load pretrained model on other dataset
-        model_dict = self.state_dict()
-
-        pretrained_on_kin = torch.utils.model_zoo.load_url(weight_url)
-        new_state_dict = {k[18:]: v for k, v in pretrained_on_kin['state_dict'].items() if k[18:] in model_dict}
-        
-
-        # init the layer names which is not in pretrained model dict
-        un_init_dict_keys = [k for k in model_dict.keys() if k not in new_state_dict]
-
-        print(un_init_dict_keys)
-
-        std = 0.001
-        for k in un_init_dict_keys:
-            new_state_dict[k] = torch.DoubleTensor(model_dict[k].size()).zero_()
-            if 'weight' in k:
-                normal(new_state_dict[k], 0, std)
-            elif 'bias' in k:
-                constant(new_state_dict[k], 0)
-
-        self.load_state_dict(new_state_dict)
-
-
-        # self.load_state_dict(torch.utils.model_zoo.load_url(weight_url))
-
     def forward(self, input):
         data_dict = dict()
         data_dict[self._op_list[0][-1]] = input
@@ -79,7 +55,7 @@ class ECO(nn.Module):
         for op in self._op_list:
             if op[1] != 'Concat' and op[1] != 'InnerProduct' and op[1] != 'Eltwise':
                 # first 3d conv layer judge, the last 2d conv layer's output must be transpose from 4d to 5d
-                if op[0] == 'res3a_1' or op[0] == 'res3a_down':
+                if op[0] == 'res3a_2':
                     inception_3c_output = data_dict['inception_3c_double_3x3_1_bn']
                     inception_3c_transpose_output = torch.transpose(inception_3c_output.view((-1, self.num_segments) + inception_3c_output.size()[1:]), 1, 2)
                     data_dict[op[2]] = getattr(self, op[0])(inception_3c_transpose_output)
