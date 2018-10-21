@@ -1,12 +1,10 @@
-# ECO-pytorch(not finished yet!)
+# ECO-pytorch
 
-## NOTE
+* We provide the latest version of ECO-pytorch and pretrained models [here](https://github.com/mzolfaghari/ECO-pytorch).
+* Many thanks to the author @mzolfaghari.
+* If you have any questions, feel free to open a new issue in this repo.
 
-* **This repo is not finished yet!**
-* **Please keep watching, any contribution is welcomed!**
-
-* This unofficial repo implements the ECO network structure with PyTorch, official repo is [here](https://github.com/mzolfaghari/ECO-efficient-video-understanding).
-* Pre-trained model for 2D-Net is provided by [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch), and 3D-Net use the Kinetics-pretrained model of 3D-Resnet18 provided by [3D-ResNets-PyTorch](https://github.com/kenshohara/3D-ResNets-PyTorch).
+* Pre-trained model for 2D-Net is provided by [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch).
 * Codes modified from [tsn-pytorch](https://github.com/yjxiong/tsn-pytorch).
 
 ## PAPER INFO
